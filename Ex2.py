@@ -2,10 +2,9 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-
-matplotlib.use('TkAgg')
 import os
 import pandas as pd
+matplotlib.use('TkAgg')
 
 DATA_PATH = r'Ex2_Ran'
 
@@ -13,6 +12,13 @@ dict_class_name = {0: 'T-shirt/top', 1: 'Trouser', 2: 'Pullover', 3: 'Dress', 4:
                    7: 'Sneaker', 8: 'Bag', 9: 'Ankle boot'}
 
 eps = 1e-12
+
+# Todo List:
+# 1. read again the derivative, check that the derivative is correct
+# 2. build model with pytorch by using the same architecture and check if the results are the same
+# 3. add dropout to the model
+# 4. check more hyperparameters such as learning rate, mu, hidden size, epochs, batch size and activation function and
+#    add your results to the next link: https://docs.google.com/document/d/1GnTlm7aYWlcBHrxH1vFJ-yGBb7Rq-QMaqPoW50D8mFk/edit?usp=sharing
 
 
 def data_augmentation(x):
@@ -90,15 +96,20 @@ class LogisticRegression:
         self.w -= self.lr * self.w_grad
         self.b -= self.lr * self.b_grad
 
+
 def relu(x):
     return np.maximum(0, x)
+
 
 def relu_derivative(x):
     return np.where(x >= 0, 1, 0)
 
+
 activation_dict = {'relu': relu}
 
 derivative_dict = {'relu': relu_derivative}
+
+
 class FashionNet:
     def __init__(self, hidden_size=32, mu=0.01, lr=0.001, activation_function='relu', w_1_dropout=0, w_2_dropout=0):
         self.w1 = np.random.normal(0, 1, (28 * 28, hidden_size))
