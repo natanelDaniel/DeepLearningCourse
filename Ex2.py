@@ -19,6 +19,9 @@ eps = 1e-12
 # 3. add dropout to the model
 # 4. check more hyperparameters such as learning rate, mu, hidden size, epochs, batch size and activation function and
 #    add your results to the next link: https://docs.google.com/document/d/1GnTlm7aYWlcBHrxH1vFJ-yGBb7Rq-QMaqPoW50D8mFk/edit?usp=sharing
+# 5. which samples we are wrong, which samples we are right, which classes we are wrong, which classes we are right
+# 6. how meny samples per class we have in the training set
+# 7. write the report
 
 
 def data_augmentation(x):
@@ -195,7 +198,7 @@ def train(model, x_train, y_train, x_val, y_val, epochs=1000, batch_size=100, ve
 
 if __name__ == '__main__':
     x_train, x_val, x_test, y_train, y_val = load_data()
-    # visualize(x_train, y_train)
+    visualize(x_train, y_train)
 
     # data normalization
     x_train = x_train / 255
