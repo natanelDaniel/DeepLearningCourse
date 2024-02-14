@@ -1,4 +1,3 @@
-from time import time
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -7,6 +6,7 @@ from sklearn.model_selection import train_test_split
 import os
 import pandas as pd
 import seaborn as sns
+from LEAF import LEAF
 
 matplotlib.use('TkAgg')
 
@@ -20,6 +20,9 @@ eps = 1e-12
 
 # Todo List:
 # 3. add dropout to the model
+# 4. check more hyperparameters such as learning rate, mu, hidden size, epochs, batch size and activation function and
+#    add your results to the next link: https://docs.google.com/document/d/1GnTlm7aYWlcBHrxH1vFJ-yGBb7Rq-QMaqPoW50D8mFk/edit?usp=sharing
+# 6. how meny samples per class we have in the training set
 # 7. write the report
 
 
@@ -31,6 +34,11 @@ def data_augmentation(x, y, max_add=25):
     augmented_data = x + mask * random_numbers[:, np.newaxis]
     augmented_data = np.clip(augmented_data, 0, 1)
 
+    # rand = np.random.rand(augmented_data.shape[0])
+    # # add noise to the image if rand > 0.8, just for mask
+    # mask = np.logical_and((rand > 0.8)[:, np.newaxis], mask)
+    # augmented_data = augmented_data + mask * np.random.normal(0, 0.1, augmented_data.shape)
+    # augmented_data = np.clip(augmented_data, 0, 1)
     # flip the image, not for class 5, 7, 9
     rand = np.random.rand(augmented_data.shape[0])
     aug_28_28 = augmented_data.reshape(-1, 28, 28)
@@ -49,6 +57,8 @@ def data_augmentation(x, y, max_add=25):
     aug_28_28[shift_vertical == -1][:, -1] = 0
     aug_28_28[shift_horizontal == 1][:, :, 0] = 0
     aug_28_28[shift_horizontal == -1][:, :, -1] = 0
+    # aug_28_28[shift_horizontal == 2][:, :, 0:2] = 0
+    # aug_28_28[shift_horizontal == -2][:, :, -2:] = 0
 
     augmented_data = aug_28_28.reshape(-1, 28 * 28)
     return augmented_data
@@ -78,9 +88,9 @@ def visualize(x_train, y_train, h=4):
     #     visualize the data, 4*10 subplot, 4 row, 10 column, 4 per class
     fig, ax = plt.subplots(h, 10, figsize=(10, 4))
     for j in range(10):
-        ax[0, j].set_title(dict_class_name[j])
         for i in range(h):
             ax[i, j].imshow(x_train[y_train == j][i].reshape(28, 28), cmap='gray')
+            ax[i, j].set_title(dict_class_name[j])
             ax[i, j].axis('off')
 
     plt.show()
@@ -156,9 +166,6 @@ class LogisticRegression:
         exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
         return exp_x / np.sum(exp_x, axis=1, keepdims=True)
 
-    def __call__(self, *args, **kwargs):
-        return self.forward(*args, **kwargs)
-
 
 def relu(x):
     return np.maximum(0, x)
@@ -176,21 +183,13 @@ def silu(x):
     return x * sigmoid(x)
 
 
-def leaky_relu(x):
-    return np.maximum(0.01 * x, x)
-
-
 def silu_derivative(x):
     return sigmoid(x) + x * sigmoid(x) * (1 - sigmoid(x))
 
 
-def leaky_relu_derivative(x):
-    return np.where(x >= 0, 1, 0.01)
+activation_dict = {'relu': relu, 'silu': silu}
 
-
-activation_dict = {'relu': relu, 'silu': silu, 'leaky_relu': leaky_relu}
-
-derivative_dict = {'relu': relu_derivative, 'silu': silu_derivative, 'leaky_relu': leaky_relu_derivative}
+derivative_dict = {'relu': relu_derivative, 'silu': silu_derivative}
 
 
 class FashionNet:
@@ -215,8 +214,8 @@ class FashionNet:
         self.b1_grad = np.zeros((1, hidden_size))
         self.w2_grad = np.zeros((hidden_size, 10))
         self.b2_grad = np.zeros((1, 10))
-        self.activation_function = activation_dict[activation_function]
-        self.activation_derivative = derivative_dict[activation_function]
+        self.activation_function = LEAF(activation_function, size=(1, hidden_size), lr_p1=0.01, lr_p2=0.01, lr_p3=0.01,
+                                        lr_p4=0.01)
 
         self.w_1_dropout = w_1_dropout
         self.w_2_dropout = w_2_dropout
@@ -254,12 +253,15 @@ class FashionNet:
     def backward(self, x, y, y_pred):
         self.t += 1
         z1 = x @ self.w1 + self.b1
+
+        self.activation_function.update(z1, (y_pred - y) @ self.w2.T * self.activation_function.derivative(z1))
+
         h = self.activation_function(z1)
 
         self.w2_grad = (h.T @ (y_pred - y)) / y.shape[0] + 2 * self.mu * self.w2
         self.b2_grad = np.sum(y_pred - y, axis=0) / y.shape[0]
 
-        w2_delta = (y_pred - y) @ self.w2.T * self.activation_derivative(z1)
+        w2_delta = (y_pred - y) @ self.w2.T * self.activation_function.derivative(z1)
         self.w1_grad = (x.T @ w2_delta) / y.shape[0] + 2 * self.mu * self.w1
         self.b1_grad = np.sum(w2_delta, axis=0) / y.shape[0]
 
@@ -306,9 +308,6 @@ class FashionNet:
     def update_lr(self):
         self.lr *= self.lr_decay
 
-    def __call__(self, *args, **kwargs):
-        return self.forward(*args, **kwargs)
-
 
 def train(model, x_train, y_train, x_val, y_val, epochs=1000, batch_size=100, verbose=100, batch_size_add=0, max_add=25):
     train_loss_history = []
@@ -322,7 +321,8 @@ def train(model, x_train, y_train, x_val, y_val, epochs=1000, batch_size=100, ve
             x_batch = x_train[i:i + batch_size]
             y_batch = y_train[i:i + batch_size]
             x_batch = data_augmentation(x_batch, y_batch, max_add)
-            y_pred = model(x_batch)
+
+            y_pred = model.forward(x_batch)
             y_pred_class = np.argmax(y_pred, axis=1)
             y_batch_class = np.argmax(y_batch, axis=1)
             batch_acc_arr.append(np.mean(y_pred_class == y_batch_class))
@@ -335,13 +335,14 @@ def train(model, x_train, y_train, x_val, y_val, epochs=1000, batch_size=100, ve
         train_acc = np.mean(batch_acc_arr)
         train_acc_history.append(train_acc)
 
-        y_val_pred = model(x_val)
+        y_val_pred = model.forward(x_val)
         val_loss = model.loss(y_val_pred, y_val)
         val_loss_history.append(val_loss)
         y_val_pred_class = np.argmax(y_val_pred, axis=1)
         val_acc = np.mean(y_val_pred_class == np.argmax(y_val, axis=1))
         val_acc_history.append(val_acc)
         if epoch % verbose == 0:
+            print(np.mean(model.activation_function.p1()), np.mean(model.activation_function.p2()), np.mean(model.activation_function.p3()), np.mean(model.activation_function.p4()))
             print('epoch {}, train loss {}, val loss {}, train acc {}, val acc {}'.format(epoch, train_loss,
                                                                                           val_loss, train_acc, val_acc))
 
@@ -352,22 +353,12 @@ def train(model, x_train, y_train, x_val, y_val, epochs=1000, batch_size=100, ve
 
 if __name__ == '__main__':
     x_train, x_val, x_test, y_train, y_val = load_data()
-    # visualize(x_train, y_train, h=20)
+    # visualize(x_train, y_train, h=10)
 
     # data normalization
-    mean_train = np.mean(x_train, axis=0)
-    std_train = np.std(x_train, axis=0)
-
-    data_normalization_type = ''
-
-    if data_normalization_type == 'z_score':
-        x_train = (x_train - mean_train) / (std_train + eps)
-        x_val = (x_val - mean_train) / (std_train + eps)
-        x_test = (x_test - mean_train) / (std_train + eps)
-    else:
-        x_train = x_train / 255
-        x_val = x_val / 255
-        x_test = x_test / 255
+    x_train = x_train / 255
+    x_val = x_val / 255
+    x_test = x_test / 255
 
 
     # for classes 0,2,4,6 -> duplicate the samples
@@ -389,9 +380,9 @@ if __name__ == '__main__':
     y_val_hot = one_hot_encoding(y_val)
 
     lr = 0.001
-    lr_decay = 0.985
-    epochs = 200
-    batch_size = 128
+    lr_decay = 0.99
+    epochs = 251
+    batch_size = 64
     mu = 0.00005
     verbose = 1
     hidden_size = 128
@@ -402,7 +393,6 @@ if __name__ == '__main__':
     # model = LogisticRegression(mu=mu, lr=lr, lr_decay=lr_decay)
     model = FashionNet(mu=mu, lr=lr, hidden_size=hidden_size, activation_function='relu', momentum=momentum,
                        lr_decay=lr_decay, factor_init=factor_init, beta1=0.9, beta2=0.999)
-    t1 = time()
     model, train_loss_history, val_loss_history, train_acc_history, val_acc_history = train(model, x_train, y_train_hot,
                                                                                             x_val, y_val_hot,
                                                                                             epochs=epochs,
@@ -411,7 +401,7 @@ if __name__ == '__main__':
                                                                                             batch_size_add=batch_size_add,
                                                                                             max_add=max_add)
 
-    print('Training time: ', time() - t1)
+
     plt.figure()
     plt.plot(train_loss_history, label='train loss')
     plt.plot(val_loss_history, label='val loss')
@@ -424,10 +414,10 @@ if __name__ == '__main__':
     plt.legend()
     plt.show()
 
-    y_test_pred = model(x_test)
+    y_test_pred = model.forward(x_test)
     y_test_pred_class = np.argmax(y_test_pred, axis=1)
 
-    y_pred = model(x_val)
+    y_pred = model.forward(x_val)
     arg_y = np.argmax(y_pred, axis=1)
     # Step 2: Compute Accuracy for Each Class
     accuracy_per_class = []
