@@ -1,3 +1,4 @@
+from copy import deepcopy
 from time import time
 import numpy as np
 import matplotlib
@@ -18,12 +19,7 @@ dict_class_name = {0: 'T-shirt/top', 1: 'Trouser', 2: 'Pullover', 3: 'Dress', 4:
 eps = 1e-12
 
 
-# Todo List:
-# 3. add dropout to the model
-# 7. write the report
-
-
-def data_augmentation(x, y, max_add=25):
+def data_augmentation(x, y, max_add=25, random_shift=1):
     # Create a mask for values greater than 0.05
     mask = x > 0.05
     random_numbers = np.random.randint(-max_add, max_add+1, size=x.shape[0]) / 255.0
@@ -39,16 +35,17 @@ def data_augmentation(x, y, max_add=25):
     aug_28_28[mask] = np.flip(aug_28_28[mask], axis=2)
 
     # shift randomly the image
-    shift_vertical = np.random.randint(-1, 2, aug_28_28.shape[0])
-    shift_horizontal = np.random.randint(-1, 2, aug_28_28.shape[0])
-    for i in range(aug_28_28.shape[0]):
-        aug_28_28[i] = np.roll(aug_28_28[i], shift_vertical[i], axis=0)
-        aug_28_28[i] = np.roll(aug_28_28[i], shift_horizontal[i], axis=1)
+    if random_shift != 0:
+        shift_vertical = np.random.randint(-random_shift, random_shift+1, aug_28_28.shape[0])
+        shift_horizontal = np.random.randint(-random_shift, random_shift+1, aug_28_28.shape[0])
+        for i in range(aug_28_28.shape[0]):
+            aug_28_28[i] = np.roll(aug_28_28[i], shift_vertical[i], axis=0)
+            aug_28_28[i] = np.roll(aug_28_28[i], shift_horizontal[i], axis=1)
 
-    aug_28_28[shift_vertical == 1][:, 0] = 0
-    aug_28_28[shift_vertical == -1][:, -1] = 0
-    aug_28_28[shift_horizontal == 1][:, :, 0] = 0
-    aug_28_28[shift_horizontal == -1][:, :, -1] = 0
+        aug_28_28[shift_vertical == 1][:, 0] = 0
+        aug_28_28[shift_vertical == -1][:, -1] = 0
+        aug_28_28[shift_horizontal == 1][:, :, 0] = 0
+        aug_28_28[shift_horizontal == -1][:, :, -1] = 0
 
     augmented_data = aug_28_28.reshape(-1, 28 * 28)
     return augmented_data
@@ -98,9 +95,9 @@ def one_hot_encoding(y):
 
 
 class LogisticRegression:
-    def __init__(self, mu=0.01, lr=0.001, initialization='kaiming', momentum=None, beta1=0.9, beta2=0.999, lr_decay=1):
+    def __init__(self, mu=0.01, lr=0.001, initialization='kaiming', momentum=None, beta1=0.9, beta2=0.999, lr_decay=1, factor_init=1):
         if initialization == 'kaiming':
-            self.w = np.random.normal(0, np.sqrt(2 / (28 * 28)), (28 * 28, 10))
+            self.w = np.random.normal(0, np.sqrt(2 / (28 * 28 * factor_init)), (28 * 28, 10))
             self.b = np.zeros((1, 10))
         else:
             self.w = np.random.normal(0, 1, (28 * 28, 10))
@@ -120,7 +117,7 @@ class LogisticRegression:
         self.v_t_b = np.zeros_like(self.b)
         self.t = 0
 
-    def forward(self, x):
+    def forward(self, x, training=False):
         z = x @ self.w + self.b
         return self.softmax(z)
 
@@ -160,41 +157,9 @@ class LogisticRegression:
         return self.forward(*args, **kwargs)
 
 
-def relu(x):
-    return np.maximum(0, x)
-
-
-def relu_derivative(x):
-    return np.where(x >= 0, 1, 0)
-
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
-
-def silu(x):
-    return x * sigmoid(x)
-
-
-def leaky_relu(x):
-    return np.maximum(0.01 * x, x)
-
-
-def silu_derivative(x):
-    return sigmoid(x) + x * sigmoid(x) * (1 - sigmoid(x))
-
-
-def leaky_relu_derivative(x):
-    return np.where(x >= 0, 1, 0.01)
-
-
-activation_dict = {'relu': relu, 'silu': silu, 'leaky_relu': leaky_relu}
-
-derivative_dict = {'relu': relu_derivative, 'silu': silu_derivative, 'leaky_relu': leaky_relu_derivative}
-
 
 class FashionNet:
-    def __init__(self, hidden_size=32, mu=0.01, lr=0.001, activation_function='relu', w_1_dropout=0, w_2_dropout=0,
+    def __init__(self, hidden_size=32, mu=0.01, lr=0.001, activation_function='relu', dropout_rate=0,
                  initialzation='kaiming', momentum=None, beta1=0.9, beta2=0.999, lr_decay=1, factor_init=1):
         if initialzation == 'kaiming':
             self.w1 = np.random.normal(0, np.sqrt(2 / (28 * 28 * factor_init)), (28 * 28, hidden_size))
@@ -215,11 +180,15 @@ class FashionNet:
         self.b1_grad = np.zeros((1, hidden_size))
         self.w2_grad = np.zeros((hidden_size, 10))
         self.b2_grad = np.zeros((1, 10))
-        self.activation_function = activation_dict[activation_function]
-        self.activation_derivative = derivative_dict[activation_function]
 
-        self.w_1_dropout = w_1_dropout
-        self.w_2_dropout = w_2_dropout
+        self.activation_dict = {'relu': self.relu, 'silu': self.silu, 'leaky_relu': self.leaky_relu}
+
+        self.derivative_dict = {'relu': self.relu_derivative, 'silu': self.silu_derivative, 'leaky_relu': self.leaky_relu_derivative}
+
+        self.activation_function = self.activation_dict[activation_function]
+        self.activation_derivative = self.derivative_dict[activation_function]
+
+        self.dropout_rate = dropout_rate
 
         self.prev_w1_grad = np.zeros_like(self.w1)
         self.prev_b1_grad = np.zeros_like(self.b1)
@@ -237,14 +206,38 @@ class FashionNet:
         self.m_t_b2 = np.zeros_like(self.b2)
         self.v_t_b2 = np.zeros_like(self.b2)
         self.t = 0
+    def relu(self, x):
+        return np.maximum(0, x)
 
-    def dropout(self):
-        self.w1 *= np.random.binomial(1, 1 - self.w_1_dropout, self.w1.shape)
-        self.w2 *= np.random.binomial(1, 1 - self.w_2_dropout, self.w2.shape)
+    def relu_derivative(self, x):
+        return np.where(x >= 0, 1, 0)
 
-    def forward(self, x):
+    def sigmoid(self, x):
+        return 1 / (1 + np.exp(-x))
+
+    def silu(self, x):
+        return x * self.sigmoid(x)
+
+    def leaky_relu(self, x):
+        return np.maximum(0.01 * x, x)
+
+    def silu_derivative(self, x):
+        return self.sigmoid(x) + x * self.sigmoid(x) * (1 - self.sigmoid(x))
+
+    def leaky_relu_derivative(self, x):
+        return np.where(x >= 0, 1, 0.01)
+
+    def dropout(self, x):
+        mask = np.random.binomial(1, 1 - self.dropout_rate, size=x.shape) / (1 - self.dropout_rate)
+        return x * mask
+
+    def forward(self, x, training=False):
         z1 = x @ self.w1 + self.b1
         h = self.activation_function(z1)
+
+        if training:  # Apply dropout only during training
+            h = self.dropout(h)
+
         z2 = h @ self.w2 + self.b2
         return softmax(z2)
 
@@ -310,19 +303,21 @@ class FashionNet:
         return self.forward(*args, **kwargs)
 
 
-def train(model, x_train, y_train, x_val, y_val, epochs=1000, batch_size=100, verbose=100, batch_size_add=0, max_add=25):
+def train(model, x_train, y_train, x_val, y_val, epochs=1000, batch_size=100, verbose=100, batch_size_add=0, max_add=25, random_shift=1):
     train_loss_history = []
     train_acc_history = []
     val_loss_history = []
     val_acc_history = []
+    best_model = None
+    best_val_acc = 0
     for epoch in range(epochs):
         batch_loss_arr = []
         batch_acc_arr = []
         for i in range(0, x_train.shape[0], batch_size):
             x_batch = x_train[i:i + batch_size]
             y_batch = y_train[i:i + batch_size]
-            x_batch = data_augmentation(x_batch, y_batch, max_add)
-            y_pred = model(x_batch)
+            x_batch = data_augmentation(x_batch, y_batch, max_add, random_shift)
+            y_pred = model(x_batch, training=True)
             y_pred_class = np.argmax(y_pred, axis=1)
             y_batch_class = np.argmax(y_batch, axis=1)
             batch_acc_arr.append(np.mean(y_pred_class == y_batch_class))
@@ -341,13 +336,18 @@ def train(model, x_train, y_train, x_val, y_val, epochs=1000, batch_size=100, ve
         y_val_pred_class = np.argmax(y_val_pred, axis=1)
         val_acc = np.mean(y_val_pred_class == np.argmax(y_val, axis=1))
         val_acc_history.append(val_acc)
+
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_model = deepcopy(model)
+
         if epoch % verbose == 0:
             print('epoch {}, train loss {}, val loss {}, train acc {}, val acc {}'.format(epoch, train_loss,
                                                                                           val_loss, train_acc, val_acc))
 
         model.update_lr()
         batch_size += batch_size_add
-    return model, train_loss_history, val_loss_history, train_acc_history, val_acc_history
+    return best_model, train_loss_history, val_loss_history, train_acc_history, val_acc_history
 
 
 if __name__ == '__main__':
@@ -376,8 +376,9 @@ if __name__ == '__main__':
     class_4 = x_train[y_train == 4]
     class_6 = x_train[y_train == 6]
 
-    x_train = np.concatenate([x_train, class_0, class_2, class_4, class_6, class_6], axis=0)
-    y_train = np.concatenate([y_train, np.zeros(class_0.shape[0]), 2 * np.ones(class_2.shape[0]), 4 * np.ones(class_4.shape[0]), 6 * np.ones(class_6.shape[0]), 6 * np.ones(class_6.shape[0])]).astype(int)
+    # x_train = np.concatenate([x_train, class_0, class_2, class_4, class_6, class_6], axis=0)
+    # y_train = np.concatenate([y_train, np.zeros(class_0.shape[0]), 2 * np.ones(class_2.shape[0]), 4 * np.ones(class_4.shape[0]), 6 * np.ones(class_6.shape[0]), 6 * np.ones(class_6.shape[0])]).astype(int)
+
 
     # shuffle the data
     indices = np.arange(x_train.shape[0])
@@ -389,19 +390,21 @@ if __name__ == '__main__':
     y_val_hot = one_hot_encoding(y_val)
 
     lr = 0.001
-    lr_decay = 0.985
-    epochs = 200
+    lr_decay = 0.99
+    epochs = 201
     batch_size = 128
-    mu = 0.00005
+    mu = 0.0001
     verbose = 1
     hidden_size = 128
     momentum = None
     batch_size_add = 1
     factor_init = 4
-    max_add = 5
-    # model = LogisticRegression(mu=mu, lr=lr, lr_decay=lr_decay)
+    max_add = 25
+    random_shift = 1
+    dropout_rate = 0
+    # model = LogisticRegression(mu=mu, lr=lr, lr_decay=lr_decay, factor_init=factor_init)
     model = FashionNet(mu=mu, lr=lr, hidden_size=hidden_size, activation_function='relu', momentum=momentum,
-                       lr_decay=lr_decay, factor_init=factor_init, beta1=0.9, beta2=0.999)
+                       lr_decay=lr_decay, factor_init=factor_init, beta1=0.9, beta2=0.999, dropout_rate=dropout_rate)
     t1 = time()
     model, train_loss_history, val_loss_history, train_acc_history, val_acc_history = train(model, x_train, y_train_hot,
                                                                                             x_val, y_val_hot,
@@ -409,8 +412,10 @@ if __name__ == '__main__':
                                                                                             batch_size=batch_size,
                                                                                             verbose=verbose,
                                                                                             batch_size_add=batch_size_add,
-                                                                                            max_add=max_add)
-
+                                                                                            max_add=max_add,
+                                                                                            random_shift=random_shift)
+    # save the model
+    np.save('model2.npy', model)
     print('Training time: ', time() - t1)
     plt.figure()
     plt.plot(train_loss_history, label='train loss')
