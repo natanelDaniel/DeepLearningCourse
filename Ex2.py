@@ -666,7 +666,7 @@ if __name__ == '__main__':
         ax[i].axis('off')
 
     plt.show()
-    
+
     good_samples = x_val[(y_val == 6) & (arg_y == 6)]
     fig, ax = plt.subplots(1, 10, figsize=(10, 4))
     for i in range(10):
