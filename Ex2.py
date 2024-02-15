@@ -67,7 +67,6 @@ def load_data():
     train_data, val_data, train_labels, val_labels = train_test_split(train_data, train_labels, test_size=0.1,
                                                                       random_state=42, stratify=train_labels,
                                                                       shuffle=True)
-
     return train_data, val_data, test_data, train_labels, val_labels
 
 
@@ -79,7 +78,6 @@ def visualize(x_train, y_train, h=4):
         for i in range(h):
             ax[i, j].imshow(x_train[y_train == j][i].reshape(28, 28), cmap='gray')
             ax[i, j].axis('off')
-
     plt.show()
 
 
@@ -157,7 +155,6 @@ class LogisticRegression:
         return self.forward(*args, **kwargs)
 
 
-
 class FashionNet:
     def __init__(self, hidden_size=32, mu=0.01, lr=0.001, activation_function='relu', dropout_rate=0,
                  initialzation='kaiming', momentum=None, beta1=0.9, beta2=0.999, lr_decay=1, factor_init=1):
@@ -206,6 +203,7 @@ class FashionNet:
         self.m_t_b2 = np.zeros_like(self.b2)
         self.v_t_b2 = np.zeros_like(self.b2)
         self.t = 0
+
     def relu(self, x):
         return np.maximum(0, x)
 
@@ -352,7 +350,7 @@ def train(model, x_train, y_train, x_val, y_val, epochs=1000, batch_size=100, ve
 
 if __name__ == '__main__':
     x_train, x_val, x_test, y_train, y_val = load_data()
-    # visualize(x_train, y_train, h=20)
+    visualize(x_train, y_train, h=20)
 
     # data normalization
     mean_train = np.mean(x_train, axis=0)
@@ -368,16 +366,6 @@ if __name__ == '__main__':
         x_train = x_train / 255
         x_val = x_val / 255
         x_test = x_test / 255
-
-
-    # for classes 0,2,4,6 -> duplicate the samples
-    class_0 = x_train[y_train == 0]
-    class_2 = x_train[y_train == 2]
-    class_4 = x_train[y_train == 4]
-    class_6 = x_train[y_train == 6]
-
-    # x_train = np.concatenate([x_train, class_0, class_2, class_4, class_6, class_6], axis=0)
-    # y_train = np.concatenate([y_train, np.zeros(class_0.shape[0]), 2 * np.ones(class_2.shape[0]), 4 * np.ones(class_4.shape[0]), 6 * np.ones(class_6.shape[0]), 6 * np.ones(class_6.shape[0])]).astype(int)
 
 
     # shuffle the data
