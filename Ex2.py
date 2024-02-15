@@ -560,12 +560,6 @@ if __name__ == '__main__':
         x_test = x_test / 255
 
 
-    # shuffle the data and one hot encode the labels
-    indices = np.arange(x_train.shape[0])
-    np.random.shuffle(indices)
-    x_train = x_train[indices]
-    y_train = y_train[indices]
-
     y_train_hot = one_hot_encoding(y_train)
     y_val_hot = one_hot_encoding(y_val)
 
@@ -657,7 +651,6 @@ if __name__ == '__main__':
     plt.show()
 
     # Lets show the wrong samples of class 6
-
     wrong_samples = x_val[(y_val == 6) & (arg_y != 6)]
     fig, ax = plt.subplots(1, 10, figsize=(10, 4))
     for i in range(10):
