@@ -1,6 +1,7 @@
 import numpy as np
 from Ex2 import load_data
-
+# In this file we will load the models and predict the test set using the models
+# and save the predictions in csv files
 if __name__ == '__main__':
     x_train, x_val, x_test, y_train, y_val = load_data()
     # Load the model
